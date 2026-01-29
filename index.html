@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>S.S. CENTRAL | Gestão Total</title>
+    <title>S.S. CENTRAL | Gestão por Níveis</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         :root {
@@ -12,6 +12,10 @@
             --accent: #00d2ff;
             --gradient: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
             --text: #ffffff;
+            --success: #00b09b;
+            --danger: #ff416c;
+            --admin: #f1c40f;
+            --mediador: #a29bfe;
         }
 
         body {
@@ -20,6 +24,7 @@
             color: var(--text); min-height: 100vh; overflow-x: hidden;
         }
 
+        /* Login */
         #loginOverlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.95);
             backdrop-filter: blur(15px); display: flex;
@@ -37,7 +42,8 @@
             border-radius: 8px; color: white; text-align: center; font-size: 1rem;
         }
 
-        #dashboard { display: none; padding: 30px; max-width: 1400px; margin: 0 auto; }
+        /* Dashboards */
+        #dashboard, #mediadorPanel { display: none; padding: 30px; max-width: 1400px; margin: 0 auto; }
 
         header {
             display: flex; justify-content: space-between; align-items: center;
@@ -59,29 +65,49 @@
             cursor: pointer; font-weight: bold; transition: 0.3s;
         }
 
-        .btn-entry { background: #00b09b; color: white; }
-        .btn-exit { background: #ff416c; color: white; }
-        .btn-reset { background: #f1c40f; color: #000; margin-top: 15px; width: 100%; }
-        .btn-add { background: var(--accent); color: #000; border-radius: 50%; width: 35px; height: 35px; }
+        .btn-entry { background: var(--success); color: white; }
+        .btn-exit { background: var(--danger); color: white; }
+        .btn-call { background: var(--accent); color: #000; width: 100%; padding: 20px; font-size: 1.2rem; }
+        
+        #adminPanel { display: none; border: 2px solid var(--admin); grid-column: span 3; }
 
-        #adminPanel {
-            display: none; border: 2px solid #f1c40f; background: rgba(241, 196, 15, 0.05);
-            margin-bottom: 25px; grid-column: span 3;
-        }
-
-        table { width: 100%; border-collapse: collapse; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         td, th { padding: 12px; border-bottom: 1px solid var(--glass-border); text-align: left; }
+
+        #callAlert {
+            display: none; position: fixed; top: 20px; right: 20px; 
+            background: var(--admin); color: #000; padding: 20px; 
+            border-radius: 10px; z-index: 10000; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
     </style>
 </head>
 <body>
+
+<div id="callAlert">
+    <strong id="callText">ALERTA DE CHAMADO!</strong><br>
+    <span id="whoCalled" style="font-size: 0.8rem;"></span><br>
+    <button onclick="aceitarChamado()" class="btn" style="background:#000; color:#fff; margin-top:10px;">ACEITAR AGORA</button>
+</div>
 
 <div id="loginOverlay">
     <div class="login-box">
         <i class="fas fa-fingerprint fa-4x" style="color: var(--accent); margin-bottom: 15px;"></i>
         <h2>SISTEMA CENTRAL</h2>
-        <input type="password" id="userInput" placeholder="Identificação do Agente">
+        <input type="password" id="userInput" placeholder="Seu ID de Agente">
         <button onclick="checkAccess()" class="btn btn-entry" style="width: 100%;">AUTENTICAR</button>
-        <p id="errorMsg" style="color: #ff416c; display: none; margin-top: 15px;">Acesso Negado: Credencial inválida.</p>
+    </div>
+</div>
+
+<div id="mediadorPanel">
+    <header>
+        <h1>MEDIADOR <span id="medDisplayName" style="color: var(--mediador);"></span></h1>
+        <button onclick="location.reload()" class="btn btn-exit">SAIR</button>
+    </header>
+    <div class="glass-card" style="max-width: 500px; margin: 0 auto; text-align: center;">
+        <i class="fas fa-headset fa-4x" style="color: var(--mediador); margin-bottom: 20px;"></i>
+        <h2>SOLICITAR ANÁLISE SS</h2>
+        <button onclick="criarChamado()" class="btn btn-call" style="background: var(--mediador);">SOLICITAR AGORA</button>
+        <div id="medStatus" style="margin-top: 20px; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 10px;"></div>
     </div>
 </div>
 
@@ -89,175 +115,195 @@
     <header>
         <div>
             <h1 style="margin:0; letter-spacing: 2px;">CENTRAL <span style="color: var(--accent);">SS.</span></h1>
-            <p><i class="fas fa-user-shield"></i> Operador: <span id="agentName">---</span></p>
+            <p><i class="fas fa-user-shield"></i> <span id="roleLabel"></span>: <span id="agentName">---</span></p>
         </div>
         <div style="text-align: right;">
             <div id="liveClock" style="font-size: 1.8rem; font-weight: bold; color: var(--accent);">00:00:00</div>
-            <div id="liveDate" style="opacity: 0.7; text-transform: capitalize;">---</div>
         </div>
     </header>
 
     <div class="main-grid">
         <div id="adminPanel" class="glass-card">
-            <h3 style="color: #f1c40f;"><i class="fas fa-crown"></i> COMANDO CENTRAL (DIR SS)</h3>
-            <div id="adminContent">Sincronizando dados...</div>
-            <button onclick="resetAllData()" class="btn btn-reset">
-                <i class="fas fa-trash-alt"></i> ZERAR SISTEMA (NOVO DIA)
-            </button>
+            <h3 style="color: var(--admin);"><i class="fas fa-crown"></i> COMANDO CENTRAL (MONITORAMENTO)</h3>
+            <div id="adminContent"></div>
+            <button onclick="resetAllData()" class="btn" style="background:#ff416c; width:100%; margin-top:10px;">REINICIAR TUDO (NOVO DIA)</button>
         </div>
 
-        <div class="glass-card" style="grid-row: span 2;">
+        <div class="glass-card">
             <h3><i class="fas fa-history"></i> REGISTRO DE PONTO</h3>
-            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-                <button onclick="logAction('ENTRADA')" class="btn btn-entry">ENTRADA</button>
-                <button onclick="logAction('SAÍDA')" class="btn btn-exit">SAÍDA</button>
+            <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+                <button onclick="logAction('ENTRADA')" class="btn btn-entry" style="flex:1">ENTRADA</button>
+                <button onclick="logAction('SAÍDA')" class="btn btn-exit" style="flex:1">SAÍDA</button>
             </div>
-            <div style="max-height: 350px; overflow-y: auto; border-radius: 10px; background: rgba(0,0,0,0.2);">
-                <table id="pointTable">
-                    <thead><tr><th style="font-size:0.7rem">TIPO</th><th style="font-size:0.7rem">DATA/HORA</th></tr></thead>
-                    <tbody id="pointBody"></tbody>
-                </table>
+            <div style="max-height: 200px; overflow-y: auto;">
+                <table id="pointTable"><tbody id="pointBody"></tbody></table>
             </div>
         </div>
 
         <div class="glass-card">
-            <h3><i class="fas fa-search"></i> ANÁLISES</h3>
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-                <div class="stat-number" id="v1">0</div>
-                <button onclick="updateStat('v1', 1)" class="btn-add"><i class="fas fa-plus"></i></button>
-            </div>
+            <h3><i class="fas fa-search"></i> MINHAS ANÁLISES</h3>
+            <div class="stat-number" id="v1">0</div>
+            <button onclick="updateStat('v1', 1)" class="btn btn-entry" style="width:100%">+1 ANÁLISE MANUAL</button>
         </div>
 
         <div class="glass-card">
-            <h3><i class="fas fa-exclamation-triangle"></i> WO's</h3>
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-                <div class="stat-number" id="v2" style="color: #e67e22;">0</div>
-                <button onclick="updateStat('v2', 1)" class="btn-add" style="background:#e67e22;"><i class="fas fa-plus"></i></button>
-            </div>
-        </div>
-
-        <div class="glass-card">
-            <h3><i class="fas fa-skull-crossbones"></i> EXPOSEDS</h3>
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-                <div class="stat-number" id="v3" style="color: #ff416c;">0</div>
-                <button onclick="updateStat('v3', 1)" class="btn-add" style="background:#ff416c;"><i class="fas fa-plus"></i></button>
-            </div>
-        </div>
-
-        <div class="glass-card">
-            <h3><i class="fas fa-poll-h"></i> STATUS DA META</h3>
-            <p style="opacity:0.7; font-size:0.9rem">A meta foi atingida?</p>
-            <div style="display: flex; gap: 5px;">
-                <button onclick="updateStat('enquete', 'SIM')" class="btn" style="flex:1; background:var(--glass); color:#2ecc71;">SIM</button>
-                <button onclick="updateStat('enquete', 'NÃO')" class="btn" style="flex:1; background:var(--glass); color:#e74c3c;">NÃO</button>
+            <h3><i class="fas fa-exclamation-triangle"></i> WO / EXPOSED</h3>
+            <div style="display: flex; gap: 10px;">
+                <div style="text-align:center; flex:1">
+                    <div class="stat-number" id="v2" style="color: #e67e22;">0</div>
+                    <button onclick="updateStat('v2', 1)" class="btn" style="background:#e67e22; width:100%">WO</button>
+                </div>
+                <div style="text-align:center; flex:1">
+                    <div class="stat-number" id="v3" style="color: #ff416c;">0</div>
+                    <button onclick="updateStat('v3', 1)" class="btn" style="background:#ff416c; width:100%">EXP</button>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-    const whitelist = ["DIR SS", "ABERTO", "BIEL", "GOMES", "AKQG"];
+    // ==========================================
+    // CONFIGURAÇÃO DE SLOTS (EDITE AQUI)
+    // ==========================================
+    const whitelistADMs = ["DIR SS", "AKQG", "ADM_SLOT_1"];
+    const whitelistAnalistas = ["BIEL", "GOMES", "ABERTO", "AN_SLOT_1"];
+    const whitelistMediadores = ["MED_CARLOS", "MED_FELIPE", "MED_SLOT_1"];
+    // ==========================================
+
     let currentUser = "";
+    let currentCallId = null;
 
     function checkAccess() {
         const val = document.getElementById('userInput').value.toUpperCase().trim();
-        if(whitelist.includes(val)) {
+        
+        if(whitelistMediadores.includes(val)) {
             currentUser = val;
+            document.getElementById('loginOverlay').style.display = 'none';
+            document.getElementById('mediadorPanel').style.display = 'block';
+            document.getElementById('medDisplayName').innerText = currentUser;
+            setInterval(renderMedStatus, 2000);
+        } 
+        else if(whitelistADMs.includes(val) || whitelistAnalistas.includes(val)) {
+            currentUser = val;
+            const isAdmin = whitelistADMs.includes(val);
             document.getElementById('loginOverlay').style.display = 'none';
             document.getElementById('dashboard').style.display = 'block';
             document.getElementById('agentName').innerText = currentUser;
+            document.getElementById('roleLabel').innerText = isAdmin ? "ADM" : "Analista";
             
-            if(currentUser === "DIR SS") {
-                document.getElementById('adminPanel').style.display = 'block';
-            }
+            if(isAdmin) document.getElementById('adminPanel').style.display = 'block';
             
             loadUserData();
             updateAdminView();
+            setInterval(listenForCalls, 3000);
         } else {
-            document.getElementById('errorMsg').style.display = 'block';
-            document.getElementById('userInput').value = "";
+            alert("ID Não Reconhecido!");
         }
     }
 
-    function updateStat(key, value) {
-        let data = getLocalData(currentUser);
-        if(key === 'enquete') {
-            data.enquete = value;
-            alert("Status atualizado!");
-        } else {
-            data[key] += value;
-            document.getElementById(key).innerText = data[key];
+    // --- LÓGICA DO MEDIADOR ---
+    function criarChamado() {
+        let chamados = JSON.parse(localStorage.getItem('fila_chamados')) || [];
+        const novo = { 
+            id: Date.now(), 
+            status: 'ABERTO', 
+            mediador: currentUser, 
+            analista: null, 
+            hora: new Date().toLocaleTimeString() 
+        };
+        chamados.push(novo);
+        localStorage.setItem('fila_chamados', JSON.stringify(chamados));
+        alert("Chamado enviado!");
+    }
+
+    function renderMedStatus() {
+        let chamados = JSON.parse(localStorage.getItem('fila_chamados')) || [];
+        const container = document.getElementById('medStatus');
+        const meusChamados = chamados.filter(c => c.mediador === currentUser);
+        if(meusChamados.length === 0) {
+            container.innerHTML = "Nenhum chamado pendente.";
+            return;
         }
-        saveLocalData(currentUser, data);
+        const ultimo = meusChamados[meusChamados.length - 1];
+        container.innerHTML = `
+            <p style="font-size: 0.8rem; margin:0;">Pedido às ${ultimo.hora}</p>
+            <b style="color:${ultimo.status==='ABERTO'?'#f1c40f':'#2ecc71'}">
+            ${ultimo.status === 'ABERTO' ? 'AGUARDANDO ANALISTA...' : 'ACEITO POR: ' + ultimo.analista}
+            </b>`;
+    }
+
+    // --- LÓGICA DO ANALISTA ---
+    function listenForCalls() {
+        let chamados = JSON.parse(localStorage.getItem('fila_chamados')) || [];
+        const aberto = chamados.find(c => c.status === 'ABERTO');
+        if(aberto) {
+            currentCallId = aberto.id;
+            document.getElementById('whoCalled').innerText = "Solicitado por: " + aberto.mediador;
+            document.getElementById('callAlert').style.display = 'block';
+        } else {
+            document.getElementById('callAlert').style.display = 'none';
+        }
+    }
+
+    function aceitarChamado() {
+        let chamados = JSON.parse(localStorage.getItem('fila_chamados')) || [];
+        let idx = chamados.findIndex(c => c.id === currentCallId);
+        if(idx !== -1 && chamados[idx].status === 'ABERTO') {
+            chamados[idx].status = 'ACEITO';
+            chamados[idx].analista = currentUser;
+            localStorage.setItem('fila_chamados', JSON.stringify(chamados));
+            updateStat('v1', 1);
+            alert("Chamado aceito!");
+        }
+        document.getElementById('callAlert').style.display = 'none';
+    }
+
+    // --- FUNÇÕES DE DADOS ---
+    function updateStat(key, value) {
+        let data = JSON.parse(localStorage.getItem(currentUser)) || {v1:0, v2:0, v3:0, pontos:[]};
+        data[key] += value;
+        localStorage.setItem(currentUser, JSON.stringify(data));
+        loadUserData();
         updateAdminView();
     }
 
     function logAction(type) {
-        let data = getLocalData(currentUser);
-        const now = new Date();
-        data.pontos.unshift({ type: type, time: now.toLocaleString('pt-BR') });
-        saveLocalData(currentUser, data);
-        renderPoints(data.pontos);
-        updateAdminView();
-    }
-
-    function resetAllData() {
-        if(confirm("ATENÇÃO: Isso apagará os dados de TODOS os analistas para um novo dia. Confirmar?")) {
-            whitelist.forEach(user => localStorage.removeItem(user));
-            alert("Sistema Resetado!");
-            location.reload(); // Recarrega para limpar a tela
-        }
-    }
-
-    // Auxiliares de Dados
-    function getLocalData(user) {
-        return JSON.parse(localStorage.getItem(user)) || {v1:0, v2:0, v3:0, pontos:[], enquete: "-"};
-    }
-    function saveLocalData(user, data) {
-        localStorage.setItem(user, JSON.stringify(data));
+        let data = JSON.parse(localStorage.getItem(currentUser)) || {v1:0, v2:0, v3:0, pontos:[]};
+        data.pontos.unshift({ type: type, time: new Date().toLocaleTimeString() });
+        localStorage.setItem(currentUser, JSON.stringify(data));
+        loadUserData();
     }
 
     function loadUserData() {
-        let data = getLocalData(currentUser);
+        let data = JSON.parse(localStorage.getItem(currentUser)) || {v1:0, v2:0, v3:0, pontos:[]};
         document.getElementById('v1').innerText = data.v1;
         document.getElementById('v2').innerText = data.v2;
         document.getElementById('v3').innerText = data.v3;
-        renderPoints(data.pontos);
-    }
-
-    function renderPoints(pontos) {
-        const body = document.getElementById('pointBody');
-        body.innerHTML = pontos.map(p => `
-            <tr>
-                <td style="color:${p.type==='ENTRADA'?'#00b09b':'#ff416c'}; font-weight:bold">${p.type}</td>
-                <td style="font-size:0.8rem">${p.time}</td>
-            </tr>
-        `).join('');
+        document.getElementById('pointBody').innerHTML = data.pontos.map(p => `<tr><td>${p.type}</td><td>${p.time}</td></tr>`).join('');
     }
 
     function updateAdminView() {
-        if(currentUser !== "DIR SS") return;
-        let html = "<table><tr><th>Analista</th><th>Análises</th><th>WOs</th><th>Exposeds</th><th>Meta</th></tr>";
-        whitelist.forEach(user => {
-            if(user === "DIR SS") return;
-            let d = getLocalData(user);
-            html += `<tr>
-                <td><strong>${user}</strong></td>
-                <td>${d.v1}</td>
-                <td>${d.v2}</td>
-                <td>${d.v3}</td>
-                <td style="color:${d.enquete==='SIM'?'#2ecc71':'#e74c3c'}">${d.enquete}</td>
-            </tr>`;
+        if(!whitelistADMs.includes(currentUser)) return;
+        let html = "<table><tr><th>Agente</th><th>Tipo</th><th>Análises</th><th>WO/EXP</th></tr>";
+        [...whitelistADMs, ...whitelistAnalistas].forEach(user => {
+            let type = whitelistADMs.includes(user) ? "ADM" : "Analista";
+            let d = JSON.parse(localStorage.getItem(user)) || {v1:0, v2:0, v3:0};
+            html += `<tr><td>${user}</td><td><small>${type}</small></td><td>${d.v1}</td><td>${d.v2}/${d.v3}</td></tr>`;
         });
         document.getElementById('adminContent').innerHTML = html + "</table>";
     }
 
+    function resetAllData() {
+        if(confirm("Deseja zerar os dados de todos para o novo dia?")) {
+            localStorage.clear();
+            location.reload();
+        }
+    }
+
     setInterval(() => {
-        const now = new Date();
-        document.getElementById('liveClock').innerText = now.toLocaleTimeString('pt-BR');
-        document.getElementById('liveDate').innerText = now.toLocaleDateString('pt-BR', {weekday: 'long', day: 'numeric', month: 'long'});
+        document.getElementById('liveClock').innerText = new Date().toLocaleTimeString();
     }, 1000);
 </script>
-
 </body>
 </html>
